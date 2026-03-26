@@ -62,14 +62,15 @@ def main():
     while True:
         now = datetime.now(TZ)
 
-        if now.hour == MORNING_HOUR and now.minute == MORNING_MINUTE:
-            if last_daily_sent_date != now.date():
-                send_morning()
-                last_daily_sent_date = now.date()
+        if (
+            last_daily_sent_date != now.date()
+            and (now.hour > MORNING_HOUR or (now.hour == MORNING_HOUR and now.minute >= MORNING_MINUTE))
+        ):
+            send_morning()
+            last_daily_sent_date = now.date()
 
         check()
         time.sleep(CHECK_INTERVAL_SECONDS)
-
 
 if __name__ == "__main__":
     main()
