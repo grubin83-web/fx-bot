@@ -1,10 +1,11 @@
+import os
 import time
 import requests
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-BOT_TOKEN = "8605158805:AAEAGGiwaTXTxRg_JePzlhYzbCb4iLtBqHU"
-CHAT_ID = "625766912"
+BOT_TOKEN = os.getenv("8605158805:AAEAGGiwaTXTxRg_JePzlhYzbCb4iLtBqHU")
+CHAT_ID = os.getenv("625766912")
 
 USD_THRESHOLD = 3.1
 EUR_THRESHOLD = 3.55
@@ -33,20 +34,26 @@ def send_telegram_message(text):
 
 
 def get_live_rates():
-    usd = requests.get(
+    usd_response = requests.get(
         "https://api.frankfurter.dev/v1/latest?base=USD&symbols=ILS",
         timeout=15
-    ).json()["rates"]["ILS"]
+    )
+    usd_response.raise_for_status()
+    usd = usd_response.json()["rates"]["ILS"]
 
-    eur = requests.get(
+    eur_response = requests.get(
         "https://api.frankfurter.dev/v1/latest?base=EUR&symbols=ILS",
         timeout=15
-    ).json()["rates"]["ILS"]
+    )
+    eur_response.raise_for_status()
+    eur = eur_response.json()["rates"]["ILS"]
 
-    btc = requests.get(
-        "https://api.coindesk.com/v1/bpi/currentprice/USD.json",
+    btc_response = requests.get(
+        "https://api.coinbase.com/v2/prices/BTC-USD/spot",
         timeout=15
-    ).json()["bpi"]["USD"]["rate_float"]
+    )
+    btc_response.raise_for_status()
+    btc = float(btc_response.json()["data"]["amount"])
 
     return usd, eur, btc
 
@@ -88,22 +95,28 @@ def check():
 def main():
     global last_daily_sent_date
 
-    send_telegram_message("🚀 הבוט התחיל לעבוד")
-
     while True:
-        now = datetime.now(TZ)
+        try:
+            now = datetime.now(TZ)
 
-        if (
-            last_daily_sent_date != now.date()
-            and (
-                now.hour > MORNING_HOUR
-                or (now.hour == MORNING_HOUR and now.minute >= MORNING_MINUTE)
-            )
-        ):
-            send_morning()
-            last_daily_sent_date = now.date()
+            if (
+                last_daily_sent_date != now.date()
+                and (
+                    now.hour > MORNING_HOUR
+                    or (now.hour == MORNING_HOUR and now.minute >= MORNING_MINUTE)
+                )
+            ):
+                send_morning()
+                last_daily_sent_date = now.date()
 
-        check()
+            check()
+
+        except Exception as e:
+            try:
+                send_telegram_message(f"❌ שגיאה בבוט: {e}")
+            except Exception:
+                pass
+
         time.sleep(CHECK_INTERVAL_SECONDS)
 
 
