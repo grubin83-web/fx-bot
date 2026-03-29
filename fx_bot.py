@@ -8,6 +8,7 @@ CHAT_ID = "625766912"
 
 USD_THRESHOLD = 3.1
 EUR_THRESHOLD = 3.55
+BTC_THRESHOLD = 60000
 
 CHECK_INTERVAL_SECONDS = 300
 MORNING_HOUR = 8
@@ -18,28 +19,52 @@ TZ = ZoneInfo("Asia/Jerusalem")
 last_daily_sent_date = None
 usd_alert_sent = False
 eur_alert_sent = False
+btc_alert_sent = False
 
 
 def send_telegram_message(text):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    requests.post(url, json={"chat_id": CHAT_ID, "text": text})
+    response = requests.post(
+        url,
+        json={"chat_id": CHAT_ID, "text": text},
+        timeout=15
+    )
+    response.raise_for_status()
 
 
 def get_live_rates():
-    usd = requests.get("https://api.frankfurter.dev/v1/latest?base=USD&symbols=ILS").json()["rates"]["ILS"]
-    eur = requests.get("https://api.frankfurter.dev/v1/latest?base=EUR&symbols=ILS").json()["rates"]["ILS"]
-    return usd, eur
+    usd = requests.get(
+        "https://api.frankfurter.dev/v1/latest?base=USD&symbols=ILS",
+        timeout=15
+    ).json()["rates"]["ILS"]
+
+    eur = requests.get(
+        "https://api.frankfurter.dev/v1/latest?base=EUR&symbols=ILS",
+        timeout=15
+    ).json()["rates"]["ILS"]
+
+    btc = requests.get(
+        "https://api.coindesk.com/v1/bpi/currentprice/USD.json",
+        timeout=15
+    ).json()["bpi"]["USD"]["rate_float"]
+
+    return usd, eur, btc
 
 
 def send_morning():
-    usd, eur = get_live_rates()
-    send_telegram_message(f"💱 בוקר טוב\nUSD: {usd:.4f}\nEUR: {eur:.4f}")
+    usd, eur, btc = get_live_rates()
+    send_telegram_message(
+        f"💱 בוקר טוב\n"
+        f"USD: {usd:.4f}\n"
+        f"EUR: {eur:.4f}\n"
+        f"BTC: {btc:,.2f} USD"
+    )
 
 
 def check():
-    global usd_alert_sent, eur_alert_sent
+    global usd_alert_sent, eur_alert_sent, btc_alert_sent
 
-    usd, eur = get_live_rates()
+    usd, eur, btc = get_live_rates()
 
     if usd < USD_THRESHOLD and not usd_alert_sent:
         send_telegram_message(f"⚠️ דולר מתחת ל-{USD_THRESHOLD}: {usd:.4f}")
@@ -53,6 +78,12 @@ def check():
     elif eur >= EUR_THRESHOLD:
         eur_alert_sent = False
 
+    if btc < BTC_THRESHOLD and not btc_alert_sent:
+        send_telegram_message(f"⚠️ ביטקוין מתחת ל-{BTC_THRESHOLD}: {btc:,.2f} USD")
+        btc_alert_sent = True
+    elif btc >= BTC_THRESHOLD:
+        btc_alert_sent = False
+
 
 def main():
     global last_daily_sent_date
@@ -64,13 +95,17 @@ def main():
 
         if (
             last_daily_sent_date != now.date()
-            and (now.hour > MORNING_HOUR or (now.hour == MORNING_HOUR and now.minute >= MORNING_MINUTE))
+            and (
+                now.hour > MORNING_HOUR
+                or (now.hour == MORNING_HOUR and now.minute >= MORNING_MINUTE)
+            )
         ):
             send_morning()
             last_daily_sent_date = now.date()
 
         check()
         time.sleep(CHECK_INTERVAL_SECONDS)
+
 
 if __name__ == "__main__":
     main()
